@@ -16,47 +16,92 @@ ANDROID_APPS = {
     "PayPal":    "https://apkpure.com/paypal-mobile-cash/com.paypal.android.p2pmobile/versions",
 }
 
+def get_release_notes(scraper, detail_url):
+    try:
+        r = scraper.get(detail_url, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+
+        changelog = soup.select_one('div.change-log')
+        if not changelog:
+            return ""
+
+        # Remove title and date elements
+        for el in changelog.select('div.title, span.date, div.date, p.date'):
+            el.decompose()
+
+        notes = changelog.get_text(separator=' ').strip()
+
+        # Remove leading date patterns like "Apr 28, 2026" or "May 5, 2026"
+        notes = re.sub(r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\s*', '', notes)
+
+        # Remove generic app description (first sentence is often boilerplate)
+        boilerplate = [
+            r'Duolingo is a learning app that teaches.*?features!',
+            r'Download and install old versions.*?features!',
+            r'For more Duolingo news.*?@duolingo\.',
+            r'.*?was released on.*?better performance\.',
+            r'Check out the detailed comparison.*?requirements\.',
+        ]
+        for pattern in boilerplate:
+            notes = re.sub(pattern, '', notes, flags=re.DOTALL)
+
+        # Clean up whitespace
+        notes = re.sub(r'\s+', ' ', notes).strip()
+        return notes
+
+    except Exception as e:
+        return ""
+
 def get_android_history(app_name):
     url = ANDROID_APPS[app_name]
     try:
         scraper = cloudscraper.create_scraper()
         response = scraper.get(url, timeout=15)
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(response.text, 'html.parser')
         versions = []
 
-        for item in soup.select("div.ver-item"):
-            version_el = item.select_one(".ver-item-n")
-            date_el    = item.select_one(".update-on")
-            notes_el   = item.select_one(".ver-des, .des, .desc, .info")
+        items = soup.select('div.ver-item')
+        total = len(items)
+        print(f"  Found {total} versions, fetching release notes...")
 
-            if version_el:
-                # Clean version — extract just the number
-                raw_version = version_el.text.strip()
-                # Extract version number like 428.0.0.47.67
-                version_match = re.search(r"[\d]+[\d\.]+", raw_version)
-                version_num = version_match.group(0) if version_match else raw_version
+        for i, item in enumerate(items):
+            version_el = item.select_one('.ver-item-n')
+            date_el    = item.select_one('.update-on')
+            link_el    = item.select_one('a')
 
-                versions.append({
-                    "app_name":      app_name,
-                    "platform":      "Android",
-                    "version":       version_num,
-                    "release_date":  date_el.text.strip() if date_el else "",
-                    "release_notes": notes_el.text.strip() if notes_el else "",
-                    "is_current":    "No",
-                    "source_url":    url,
-                })
+            if not version_el:
+                continue
 
-        # Mark first as current
+            raw_version = version_el.text.strip()
+            version_match = re.search(r'[\d]+[\d\.]+', raw_version)
+            version_num = version_match.group(0) if version_match else raw_version
+
+            detail_url = link_el.get('href') if link_el else None
+            notes = ""
+            if detail_url:
+                print(f"    [{i+1}/{total}] v{version_num}...")
+                notes = get_release_notes(scraper, detail_url)
+                time.sleep(0.5)
+
+            versions.append({
+                "app_name":      app_name,
+                "platform":      "Android",
+                "version":       version_num,
+                "release_date":  date_el.text.strip() if date_el else "",
+                "release_notes": notes,
+                "is_current":    "No",
+                "source_url":    url,
+            })
+
         if versions:
             versions[0]["is_current"] = "Yes"
 
-        # Clean up all fields
         for v in versions:
             v["version"]       = v["version"].replace("\n", " ").strip()
             v["release_date"]  = v["release_date"].replace("\n", " ").strip()
             v["release_notes"] = v["release_notes"].replace("\n", " ").strip()
 
-        print(f"  Android {app_name}: found {len(versions)} versions")
+        print(f"  Android {app_name}: done {len(versions)} versions")
         return versions
 
     except Exception as e:

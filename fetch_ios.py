@@ -17,22 +17,20 @@ IOS_APPS = {
 }
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+MAX_PAGES = 10
 
-def get_ios_history(app_name):
-    url = IOS_APPS[app_name]
+def get_ios_history_page(app_name, url):
+    """Scrape one page of version history"""
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(response.text, "html.parser")
         versions = []
 
-        # The version list is in <ol class="history"> > <li>
         history_ol = soup.select_one("ol.history")
         if not history_ol:
-            print(f"  WARNING: No history list found for {app_name}")
-            return []
+            return versions, None
 
         for li in history_ol.select("li"):
-            # Version number from the link title
             a_tag = li.select_one("a[title]")
             if not a_tag:
                 continue
@@ -41,21 +39,18 @@ def get_ios_history(app_name):
                 continue
             version_num = version_match.group(1)
 
-            # Date from first <p class="app-desc"> 
-            # e.g. "► Updated: April 21, 2026"
+            # Date
             date_text = ""
             all_desc = li.select("p.app-desc")
             if all_desc:
-                raw_date = all_desc[0].text.strip()
-                date_text = raw_date.replace("► Updated:", "").strip()
+                date_text = all_desc[0].text.strip().replace("► Updated:", "").strip()
 
-            # Release notes from <div class="info"> > <p>
+            # Release notes
             notes_text = ""
             info_div = li.select_one("div.info p")
             if info_div:
                 notes_text = info_div.text.strip()
 
-            # Is this the latest version?
             is_current = "Yes" if "(Latest Version)" in li.text else "No"
 
             versions.append({
@@ -68,12 +63,61 @@ def get_ios_history(app_name):
                 "source_url":    url,
             })
 
-        print(f"  iOS {app_name}: found {len(versions)} versions")
-        return versions
+        # Find next page URL
+        next_page = None
+        pagination = soup.select("a.page-numbers")
+        for a in pagination:
+            if "Next" in a.text or "»" in a.text:
+                next_page = a.get("href")
+                if next_page and not next_page.startswith("http"):
+                    next_page = "https://www.ipa4fun.com" + next_page
+                break
+
+        # Also check for numbered pages
+        if not next_page:
+            current = soup.select_one("span.page-numbers.current")
+            if current:
+                try:
+                    current_num = int(current.text.strip())
+                    next_num = current_num + 1
+                    # Build next page URL
+                    base_url = url.rstrip("/")
+                    if f"/{current_num}" in base_url:
+                        next_page = base_url.replace(f"/{current_num}", f"/{next_num}") + "/"
+                    else:
+                        next_page = base_url + f"/{next_num}/"
+                except:
+                    pass
+
+        return versions, next_page
 
     except Exception as e:
-        print(f"  Error fetching iOS {app_name}: {e}")
-        return []
+        print(f"  Error on page {url}: {e}")
+        return [], None
+
+
+def get_ios_history(app_name):
+    base_url = IOS_APPS[app_name]
+    all_versions = []
+    current_url = base_url
+    page_num = 1
+
+    while current_url and page_num <= MAX_PAGES:
+        print(f"  Fetching page {page_num}/{MAX_PAGES}: {current_url}")
+        versions, next_url = get_ios_history_page(app_name, current_url)
+        all_versions.extend(versions)
+        print(f"    Got {len(versions)} versions on this page")
+
+        if not next_url or not versions:
+            break
+
+        current_url = next_url
+        page_num += 1
+        time.sleep(1)  # be polite
+
+    print(f"  iOS {app_name}: total {len(all_versions)} versions across {page_num} pages")
+    return all_versions
+
 
 def get_all_ios():
     all_versions = []

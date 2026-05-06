@@ -7,48 +7,24 @@ ANDROID_APPS = {
     "Instagram": "https://apkpure.com/instagram-android-2025/com.instagram.android/versions",
     "Spotify":   "https://apkpure.com/spotify-music-and-podcasts/com.spotify.music/versions",
     "YouTube":   "https://apkpure.com/youtube/com.google.android.youtube/versions",
-    "Uber":      "https://apkpure.com/uber/com.ubercab/versions",
-    "UberEats":  "https://apkpure.com/uber-eats-food-delivery/com.ubercab.eats/versions",
-    "Duolingo":  "https://apkpure.com/duolingo-language-lessons/com.duolingo/versions",
+    "Uber":      "https://apkpure.com/uber-request-a-ride/com.ubercab/versions",
+    "UberEats":  "https://apkpure.com/uber-eats-food-and-grocery/com.ubercab.eats/versions",
+    "Duolingo":  "https://apkpure.com/duolingo-language-chess/com.duolingo/versions",
     "WhatsApp":  "https://apkpure.com/whatsapp-messenger/com.whatsapp/versions",
     "Gmail":     "https://apkpure.com/gmail/com.google.android.gm/versions",
     "TikTok":    "https://apkpure.com/tiktok/com.zhiliaoapp.musically/versions",
-    "PayPal":    "https://apkpure.com/paypal-mobile-cash/com.paypal.android.p2pmobile/versions",
+    "PayPal":    "https://apkpure.com/paypal-pay-send-save/com.paypal.android.p2pmobile/versions",
 }
 
 def get_release_notes(scraper, detail_url):
     try:
         r = scraper.get(detail_url, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-
-        changelog = soup.select_one('div.change-log')
-        if not changelog:
-            return ""
-
-        # Remove title and date elements
-        for el in changelog.select('div.title, span.date, div.date, p.date'):
-            el.decompose()
-
-        notes = changelog.get_text(separator=' ').strip()
-
-        # Remove leading date patterns like "Apr 28, 2026" or "May 5, 2026"
-        notes = re.sub(r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\s*', '', notes)
-
-        # Remove generic app description (first sentence is often boilerplate)
-        boilerplate = [
-            r'Duolingo is a learning app that teaches.*?features!',
-            r'Download and install old versions.*?features!',
-            r'For more Duolingo news.*?@duolingo\.',
-            r'.*?was released on.*?better performance\.',
-            r'Check out the detailed comparison.*?requirements\.',
-        ]
-        for pattern in boilerplate:
-            notes = re.sub(pattern, '', notes, flags=re.DOTALL)
-
-        # Clean up whitespace
-        notes = re.sub(r'\s+', ' ', notes).strip()
-        return notes
-
+        content = soup.select_one('div.whats-new-content p.content')
+        if content:
+            notes = content.get_text(separator=' ').strip()
+            return re.sub(r'\s+', ' ', notes).strip()
+        return ""
     except Exception as e:
         return ""
 

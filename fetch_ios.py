@@ -4,23 +4,22 @@ import time
 import re
 
 IOS_APPS = {
-    "Instagram": "https://www.ipa4fun.com/history/871/",
-    "Spotify":   "https://www.ipa4fun.com/history/1060/",
-    "YouTube":   "https://www.ipa4fun.com/history/185230/",
-    "Uber":      "https://www.ipa4fun.com/history/468/",
-    "UberEats":  "https://www.ipa4fun.com/history/59778/",
-    "Duolingo":  "https://www.ipa4fun.com/history/754/",
-    "WhatsApp":  "https://www.ipa4fun.com/history/278/",
-    "Gmail":     "https://www.ipa4fun.com/history/228/",
-    "TikTok":    "https://www.ipa4fun.com/history/27847/",
-    "PayPal":    "https://www.ipa4fun.com/history/1015/",
+    "Instagram":  "https://www.ipa4fun.com/history/871/",
+    "Spotify":    "https://www.ipa4fun.com/history/1060/",
+    "YouTube":    "https://www.ipa4fun.com/history/185230/",
+    "LyftDriver": "https://www.ipa4fun.com/history/111511/",
+    "UberEats":   "https://www.ipa4fun.com/history/59778/",
+    "Duolingo":   "https://www.ipa4fun.com/history/754/",
+    "WhatsApp":   "https://www.ipa4fun.com/history/278/",
+    "Gmail":      "https://www.ipa4fun.com/history/228/",
+    "TikTok":     "https://www.ipa4fun.com/history/27847/",
+    "PayPal":     "https://www.ipa4fun.com/history/1015/",
 }
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
 MAX_PAGES = 10
 
 def get_ios_history_page(app_name, url):
-    """Scrape one page of version history"""
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(response.text, "html.parser")
@@ -53,41 +52,41 @@ def get_ios_history_page(app_name, url):
 
             is_current = "Yes" if "(Latest Version)" in li.text else "No"
 
+            # Data quality note for LyftDriver
+            quality_note = ""
+            if app_name == "LyftDriver":
+                quality_note = (
+                    "Using Lyft Driver iOS app — Lyft passenger iOS history page "
+                    "(ipa4fun.com/history/154/) returns 404. "
+                    "Android data uses Lyft passenger app (me.lyft.android)."
+                )
+            else:
+                quality_note = "Release notes sourced from ipa4fun.com version history page."
+
             versions.append({
-                "app_name":      app_name,
-                "platform":      "iOS",
-                "version":       version_num,
-                "release_date":  date_text,
-                "release_notes": notes_text,
-                "is_current":    is_current,
-                "source_url":    url,
+                "app_name":           app_name,
+                "platform":           "iOS",
+                "version":            version_num,
+                "release_date":       date_text,
+                "release_notes":      notes_text,
+                "is_current":         is_current,
+                "source_url":         url,
+                "data_quality_notes": quality_note,
             })
 
-        # Find next page URL
+        # Find next page
         next_page = None
-        pagination = soup.select("a.page-numbers")
-        for a in pagination:
-            if "Next" in a.text or "»" in a.text:
-                next_page = a.get("href")
-                if next_page and not next_page.startswith("http"):
-                    next_page = "https://www.ipa4fun.com" + next_page
-                break
-
-        # Also check for numbered pages
-        if not next_page:
-            current = soup.select_one("span.page-numbers.current")
-            if current:
-                try:
-                    current_num = int(current.text.strip())
-                    next_num = current_num + 1
-                    # Build next page URL
-                    base_url = url.rstrip("/")
-                    if f"/{current_num}" in base_url:
-                        next_page = base_url.replace(f"/{current_num}", f"/{next_num}") + "/"
-                    else:
-                        next_page = base_url + f"/{next_num}/"
-                except:
-                    pass
+        current = soup.select_one("span.page-numbers.current")
+        if current:
+            try:
+                current_num = int(current.text.strip())
+                next_num = current_num + 1
+                base_url = url.rstrip("/")
+                # Remove current page number from URL if present
+                base_url = re.sub(r'/\d+$', '', base_url)
+                next_page = f"{base_url}/{next_num}/"
+            except:
+                pass
 
         return versions, next_page
 
@@ -113,7 +112,7 @@ def get_ios_history(app_name):
 
         current_url = next_url
         page_num += 1
-        time.sleep(1)  # be polite
+        time.sleep(1)
 
     print(f"  iOS {app_name}: total {len(all_versions)} versions across {page_num} pages")
     return all_versions
